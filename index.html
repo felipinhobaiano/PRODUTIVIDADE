@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horas Produtivas</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root { --bg:#f4f6f8; --card:#fff; --text:#1f2937; --muted:#6b7280; --border:#d1d5db; --accent:#111827; --danger:#b91c1c; --ok:#166534; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text); }
+    .container { max-width:1100px; margin:0 auto; padding:24px 16px 50px; }
+    h1,h2,h3 { margin-top:0; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,.04); }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .grid-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    label { display:block; font-weight:600; margin-bottom:6px; }
+    input,button { font:inherit; }
+    input[type="date"], input[type="time"], input[type="text"], input[type="email"], input[type="password"] { width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; }
+    button { border:0; border-radius:8px; padding:10px 14px; cursor:pointer; background:var(--accent); color:#fff; }
+    button.secondary { background:#e5e7eb; color:#111827; }
+    button.danger { background:#991b1b; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .muted { color:var(--muted); font-size:.92rem; }
+    .hidden { display:none !important; }
+    .status { padding:10px 12px; border-radius:8px; margin-bottom:14px; background:#eef2ff; }
+    .status.error { background:#fee2e2; color:var(--danger); }
+    .status.ok { background:#dcfce7; color:var(--ok); }
+    .item { border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:10px; }
+    .item-header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .checks { display:flex; flex-wrap:wrap; gap:16px; }
+    .checks label { font-weight:500; display:flex; align-items:center; gap:6px; margin:0; }
+    .result { font-size:1.25rem; font-weight:700; }
+    .history-item { border-top:1px solid var(--border); padding:14px 0; }
+    .history-item:first-child { border-top:0; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:#e5e7eb; margin:2px; font-size:.85rem; }
+    .auth-box { max-width:460px; margin:50px auto; }
+    @media(max-width:700px){ .grid,.grid-3 { grid-template-columns:1fr; } .topbar { align-items:flex-start; flex-direction:column; } }
+  </style>
+</head>
+<body>
+  <div id="authScreen" class="container auth-box">
+    <div class="card">
+      <h1>Horas Produtivas</h1>
+      <p class="muted">Entre na sua conta para sincronizar seu histórico na nuvem.</p>
+      <div id="authStatus" class="status hidden"></div>
+      <label for="authEmail">E-mail</label>
+      <input id="authEmail" type="email" autocomplete="email">
+      <br>
+      <label for="authPassword">Senha</label>
+      <input id="authPassword" type="password" autocomplete="current-password">
+      <br>
+      <div class="row">
+        <button id="loginBtn">Entrar</button>
+        <button id="signupBtn" class="secondary">Criar conta</button>
+      </div>
+    </div>
+  </div>
+
+  <main id="appScreen" class="container hidden">
+    <div class="topbar">
+      <div>
+        <h1>Horas Produtivas</h1>
+        <div id="userEmail" class="muted"></div>
+      </div>
+      <button id="logoutBtn" class="secondary">Sair</button>
+    </div>
+
+    <div id="appStatus" class="status hidden"></div>
+
+    <section class="card">
+      <h2>Registro do dia</h2>
+      <div class="grid">
+        <div>
+          <label for="recordDate">Data</label>
+          <input id="recordDate" type="date">
+        </div>
+        <div></div>
+        <div>
+          <label for="universityEntry">Entrada na faculdade</label>
+          <input id="universityEntry" type="time">
+        </div>
+        <div>
+          <label for="universityExit">Saída final da faculdade</label>
+          <input id="universityExit" type="time">
+        </div>
+      </div>
+
+      <br>
+      <label>Você passou algum período fora da faculdade e depois voltou?</label>
+      <div class="checks">
+        <label><input type="radio" name="wentOutside" value="no" checked> Não</label>
+        <label><input type="radio" name="wentOutside" value="yes"> Sim</label>
+      </div>
+      <div id="outsidePeriods" class="hidden"></div>
+      <br>
+      <button id="addOutsideBtn" class="secondary hidden">+ Adicionar saída e retorno</button>
+    </section>
+
+    <section class="card">
+      <h2>Pausas na faculdade</h2>
+      <div class="checks">
+        <label><input id="breakfast" type="checkbox"> Café da manhã (30 min)</label>
+        <label><input id="lunch" type="checkbox"> Almoço (60 min)</label>
+        <label><input id="dinner" type="checkbox"> Jantar (60 min)</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Atividades produtivas fixas</h2>
+      <div class="checks">
+        <label><input id="gym" type="checkbox"> Academia (+2 h)</label>
+        <label><input id="football" type="checkbox"> Futebol (+2 h)</label>
+        <label><input id="park" type="checkbox"> Parque/corrida (+1 h)</label>
+      </div>
+      <p class="muted">Essas atividades são créditos fixos. Para atividades com horário, use as seções abaixo.</p>
+    </section>
+
+    <section class="card">
+      <div class="topbar"><div><h2>Inglês</h2><p class="muted">Pode haver mais de uma aula no mesmo dia. O sistema conta apenas a parte fora dos intervalos reais da faculdade.</p></div><button id="addEnglishBtn">+ Aula</button></div>
+      <div id="englishList"></div>
+    </section>
+
+    <section class="card">
+      <div class="topbar"><div><h2>Outras atividades</h2><p class="muted">Ex.: curso à noite, estudo externo, evento, projeto etc.</p></div><button id="addActivityBtn">+ Atividade</button></div>
+      <div id="activityList"></div>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <button id="calculateBtn">Calcular</button>
+        <button id="saveBtn">Salvar na nuvem</button>
+        <button id="loadDayBtn" class="secondary">Carregar este dia</button>
+      </div>
+      <br>
+      <div id="dailyResult" class="result">Resultado: —</div>
+      <div id="dailyBreakdown" class="muted"></div>
+    </section>
+
+    <section class="card">
+      <h2>Análise do período</h2>
+      <div class="grid-3">
+        <div><label for="periodStart">Início</label><input id="periodStart" type="date"></div>
+        <div><label for="periodEnd">Fim</label><input id="periodEnd" type="date"></div>
+        <div class="row" style="align-items:end"><button id="analyzeBtn">Analisar</button></div>
+      </div>
+      <br>
+      <div id="periodResult" class="muted">—</div>
+    </section>
+
+    <section class="card">
+      <div class="topbar"><h2>Histórico</h2><button id="exportCsvBtn" class="secondary">Exportar CSV</button></div>
+      <div id="history"></div>
+    </section>
+  </main>
+
+<script>
+  // =============================================================
+  // CONFIGURAÇÃO SUPABASE
+  // Cole aqui os dados do seu projeto Supabase.
+  // NÃO coloque a service_role key neste arquivo.
+  // Use apenas a Publishable/Anon key.
+  // =============================================================
+  const SUPABASE_URL = 'https://fwfcfrgtqvzbprboxwgp.supabase.co/';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_Sk_O95m4puA9aar4lzzeyw_5gpVlLCA';
+
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+  const $ = id => document.getElementById(id);
+  const today = () => new Date().toISOString().slice(0,10);
+
+  function showStatus(message, type='') {
+    const el = $('appStatus');
+    el.textContent = message;
+    el.className = 'status ' + type;
+    el.classList.remove('hidden');
+  }
+
+  function showAuthStatus(message, type='') {
+    const el = $('authStatus');
+    el.textContent = message;
+    el.className = 'status ' + type;
+    el.classList.remove('hidden');
+  }
+
+  function minutesFromTime(t) {
+    const [h,m] = t.split(':').map(Number);
+    return h*60+m;
+  }
+
+  function timeFromMinutes(min) {
+    min = Math.max(0, Math.round(min));
+    const h = Math.floor(min/60) % 24;
+    const m = min % 60;
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  }
+
+  function overlap(aStart,aEnd,bStart,bEnd) {
+    return Math.max(0, Math.min(aEnd,bEnd) - Math.max(aStart,bStart));
+  }
+
+  function facultyIntervals(entry, exit, outside) {
+    const start = minutesFromTime(entry);
+    const end = minutesFromTime(exit);
+    if (end <= start) throw new Error('A saída da faculdade deve ser posterior à entrada.');
+    let intervals = [{start,end}];
+    for (const p of outside) {
+      const os = minutesFromTime(p.start);
+      const oe = minutesFromTime(p.end);
+      if (oe <= os) throw new Error('Um período fora da faculdade está inválido.');
+      if (os < start || oe > end) throw new Error('Os períodos fora da faculdade precisam estar dentro do período entre entrada e saída.');
+      const next = [];
+      for (const i of intervals) {
+        if (oe <= i.start || os >= i.end) { next.push(i); continue; }
+        if (os > i.start) next.push({start:i.start,end:os});
+        if (oe < i.end) next.push({start:oe,end:i.end});
+      }
+      intervals = next;
+    }
+    return intervals.filter(i => i.end > i.start);
+  }
+
+  function activityOutsideMinutes(start,end,faculty) {
+    const s = minutesFromTime(start), e = minutesFromTime(end);
+    if (e <= s) throw new Error('Uma atividade possui horário inválido.');
+    const total = e-s;
+    const inside = faculty.reduce((sum,i) => sum + overlap(s,e,i.start,i.end),0);
+    return Math.max(0,total-inside);
+  }
+
+  function collectOutside() {
+    return [...document.querySelectorAll('.outside-item')].map(item => ({
+      start:item.querySelector('.outside-start').value,
+      end:item.querySelector('.outside-end').value
+    }));
+  }
+
+  function collectTimedItems(selector, type) {
+    return [...document.querySelectorAll(selector)].map(item => ({
+      name: type === 'english' ? 'Inglês' : item.querySelector('.activity-name').value.trim(),
+      type,
+      start:item.querySelector('.activity-start').value,
+      end:item.querySelector('.activity-end').value
+    }));
+  }
+
+  function addOutside(data={start:'',end:''}) {
+    const wrap = document.createElement('div');
+    wrap.className='item outside-item';
+    wrap.innerHTML = `<div class="item-header"><strong>Período fora da faculdade</strong><button type="button" class="danger remove-btn">Remover</button></div><div class="grid"><div><label>Saída</label><input class="outside-start" type="time" value="${data.start||''}"></div><div><label>Retorno</label><input class="outside-end" type="time" value="${data.end||''}"></div></div>`;
+    wrap.querySelector('.remove-btn').onclick=()=>wrap.remove();
+    $('outsidePeriods').appendChild(wrap);
+  }
+
+  function addEnglish(data={start:'',end:''}) {
+    const wrap=document.createElement('div'); wrap.className='item english-item';
+    wrap.innerHTML=`<div class="item-header"><strong>Aula de inglês</strong><button type="button" class="danger remove-btn">Remover</button></div><div class="grid"><div><label>Início</label><input class="activity-start" type="time" value="${data.start||''}"></div><div><label>Fim</label><input class="activity-end" type="time" value="${data.end||''}"></div></div>`;
+    wrap.querySelector('.remove-btn').onclick=()=>wrap.remove(); $('englishList').appendChild(wrap);
+  }
+
+  function addActivity(data={name:'',start:'',end:'',type:'custom'}) {
+    const wrap=document.createElement('div'); wrap.className='item custom-activity-item';
+    wrap.innerHTML=`<div class="item-header"><strong>Atividade</strong><button type="button" class="danger remove-btn">Remover</button></div><div class="grid"><div><label>Nome</label><input class="activity-name" type="text" value="${escapeHtml(data.name||'')}"></div><div></div><div><label>Início</label><input class="activity-start" type="time" value="${data.start||''}"></div><div><label>Fim</label><input class="activity-end" type="time" value="${data.end||''}"></div></div>`;
+    wrap.querySelector('.remove-btn').onclick=()=>wrap.remove(); $('activityList').appendChild(wrap);
+  }
+
+  function escapeHtml(str) { return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function collectForm() {
+    const date=$('recordDate').value;
+    const entry=$('universityEntry').value;
+    const exit=$('universityExit').value;
+    if(!date || !entry || !exit) throw new Error('Preencha data, entrada e saída da faculdade.');
+    const outside=collectOutside();
+    const english=collectTimedItems('.english-item','english');
+    const custom=collectTimedItems('.custom-activity-item','custom');
+    return {
+      date, entry, exit, outside,
+      breakfast:$('breakfast').checked, lunch:$('lunch').checked, dinner:$('dinner').checked,
+      gym:$('gym').checked, football:$('football').checked, park:$('park').checked,
+      timedActivities:[...english,...custom]
+    };
+  }
+
+  function calculateRecord(form) {
+    const faculty=facultyIntervals(form.entry,form.exit,form.outside);
+    const facultyMinutes=faculty.reduce((s,i)=>s+i.end-i.start,0);
+    const pauses=(form.breakfast?30:0)+(form.lunch?60:0)+(form.dinner?60:0);
+    const universityProductive=Math.max(0,facultyMinutes-pauses);
+    const fixed=(form.gym?120:0)+(form.football?120:0)+(form.park?60:0);
+    const timed=form.timedActivities.map(a=>({ ...a, duration_minutes:minutesFromTime(a.end)-minutesFromTime(a.start), counted_minutes:activityOutsideMinutes(a.start,a.end,faculty) }));
+    const timedMinutes=timed.reduce((s,a)=>s+a.counted_minutes,0);
+    return { faculty, facultyMinutes, pauses, universityProductive, fixed, timed, timedMinutes, totalMinutes:universityProductive+fixed+timedMinutes };
+  }
+
+  function renderCalculation(calc) {
+    $('dailyResult').textContent=`Resultado: ${formatMinutes(calc.totalMinutes)}`;
+    $('dailyBreakdown').textContent=`Faculdade: ${formatMinutes(calc.universityProductive)} | Atividades fixas: ${formatMinutes(calc.fixed)} | Inglês/outras atividades fora da faculdade: ${formatMinutes(calc.timedMinutes)}.`;
+  }
+
+  function formatMinutes(m) { return `${Math.floor(m/60)}h ${m%60}min`; }
+
+  function buildPayload(form, calc, userId) {
+    return {
+      user_id:userId,
+      record_date:form.date,
+      university_entry:form.entry,
+      university_exit:form.exit,
+      outside_periods:form.outside,
+      breakfast:form.breakfast,
+      lunch:form.lunch,
+      dinner:form.dinner,
+      gym:form.gym,
+      football:form.football,
+      park:form.park,
+      result_minutes:calc.totalMinutes
+    };
+  }
+
+  async function getUser() {
+    const {data:{user},error}=await supabaseClient.auth.getUser();
+    if(error) throw error; return user;
+  }
+
+  async function saveRecord() {
+    try {
+      const user=await getUser(); if(!user) throw new Error('Usuário não autenticado.');
+      const form=collectForm(); const calc=calculateRecord(form); renderCalculation(calc);
+      const {data:record,error}=await supabaseClient.from('daily_records').upsert(buildPayload(form,calc,user.id),{onConflict:'user_id,record_date'}).select().single();
+      if(error) throw error;
+      const {error:deleteError}=await supabaseClient.from('activities').delete().eq('daily_record_id',record.id).eq('user_id',user.id);
+      if(deleteError) throw deleteError;
+      if(calc.timed.length){
+        const rows=calc.timed.map(a=>({user_id:user.id,daily_record_id:record.id,name:a.name,activity_type:a.type,start_time:a.start,end_time:a.end,duration_minutes:a.duration_minutes,counted_minutes:a.counted_minutes}));
+        const {error:insertError}=await supabaseClient.from('activities').insert(rows); if(insertError) throw insertError;
+      }
+      showStatus('Registro salvo na nuvem.','ok'); await loadHistory();
+    } catch(e){ showStatus(e.message || 'Erro ao salvar.','error'); }
+  }
+
+  function resetForm(){
+    $('recordDate').value=today(); $('universityEntry').value=''; $('universityExit').value='';
+    document.querySelector('input[name="wentOutside"][value="no"]').checked=true; $('outsidePeriods').innerHTML=''; $('outsidePeriods').classList.add('hidden'); $('addOutsideBtn').classList.add('hidden');
+    ['breakfast','lunch','dinner','gym','football','park'].forEach(id=>$(id).checked=false);
+    $('englishList').innerHTML=''; $('activityList').innerHTML=''; $('dailyResult').textContent='Resultado: —'; $('dailyBreakdown').textContent='';
+  }
+
+  async function loadDay(){
+    try{
+      const user=await getUser(); if(!user) return;
+      const date=$('recordDate').value; if(!date) return;
+      const {data:record,error}=await supabaseClient.from('daily_records').select('*').eq('user_id',user.id).eq('record_date',date).maybeSingle();
+      if(error) throw error;
+      if(!record){ showStatus('Não há registro salvo para esta data.',''); return; }
+      $('universityEntry').value=record.university_entry?.slice(0,5)||''; $('universityExit').value=record.university_exit?.slice(0,5)||'';
+      $('breakfast').checked=record.breakfast; $('lunch').checked=record.lunch; $('dinner').checked=record.dinner; $('gym').checked=record.gym; $('football').checked=record.football; $('park').checked=record.park;
+      const outside=record.outside_periods||[]; const yes=outside.length>0; document.querySelector(`input[name="wentOutside"][value="${yes?'yes':'no'}"]`).checked=true; toggleOutside(); outside.forEach(addOutside);
+      const {data:acts,error:actError}=await supabaseClient.from('activities').select('*').eq('daily_record_id',record.id).eq('user_id',user.id).order('created_at');
+      if(actError) throw actError;
+      $('englishList').innerHTML=''; $('activityList').innerHTML='';
+      (acts||[]).forEach(a=> a.activity_type==='english' ? addEnglish({start:a.start_time.slice(0,5),end:a.end_time.slice(0,5)}) : addActivity({name:a.name,start:a.start_time.slice(0,5),end:a.end_time.slice(0,5)}));
+      const form=collectForm(); renderCalculation(calculateRecord(form)); showStatus('Registro carregado.','ok');
+    }catch(e){showStatus(e.message||'Erro ao carregar.','error');}
+  }
+
+  async function loadHistory(){
+    try{
+      const user=await getUser(); if(!user) return;
+      const {data,error}=await supabaseClient.from('daily_records').select('*, activities(*)').eq('user_id',user.id).order('record_date',{ascending:false}).limit(1000);
+      if(error) throw error;
+      renderHistory(data||[]);
+    }catch(e){showStatus(e.message||'Erro ao carregar histórico.','error');}
+  }
+
+  function renderHistory(records){
+    const el=$('history');
+    if(!records.length){el.innerHTML='<p class="muted">Nenhum registro salvo.</p>';return;}
+    el.innerHTML=records.map(r=>{
+      const acts=(r.activities||[]).map(a=>`<span class="pill">${escapeHtml(a.name)}: ${formatMinutes(a.counted_minutes)}</span>`).join('');
+      return `<div class="history-item"><div class="row"><strong>${r.record_date}</strong><span class="result">${formatMinutes(r.result_minutes)}</span><button class="secondary load-history-btn" data-date="${r.record_date}">Abrir</button></div><div class="muted">Faculdade ${r.university_entry?.slice(0,5)}–${r.university_exit?.slice(0,5)} · ${acts||'Sem atividades com horário'}</div></div>`;
+    }).join('');
+    document.querySelectorAll('.load-history-btn').forEach(btn=>btn.onclick=()=>{$('recordDate').value=btn.dataset.date;loadDay();window.scrollTo({top:0,behavior:'smooth'});});
+  }
+
+  async function analyzePeriod(){
+    try{
+      const user=await getUser(); if(!user) return;
+      const start=$('periodStart').value,end=$('periodEnd').value;
+      if(!start||!end||start>end) throw new Error('Informe um intervalo de datas válido.');
+      const {data,error}=await supabaseClient.from('daily_records').select('record_date,result_minutes').eq('user_id',user.id).gte('record_date',start).lte('record_date',end).order('record_date');
+      if(error) throw error;
+      const total=(data||[]).reduce((s,r)=>s+r.result_minutes,0); const days=(data||[]).length; const avg=days?total/days:0;
+      $('periodResult').innerHTML=`<strong>${formatMinutes(total)}</strong> acumuladas em ${days} dia(s) registrado(s). Média por dia registrado: <strong>${formatMinutes(Math.round(avg))}</strong>.`;
+    }catch(e){showStatus(e.message||'Erro na análise.','error');}
+  }
+
+  async function exportCsv(){
+    try{
+      const user=await getUser(); if(!user) return;
+      const {data,error}=await supabaseClient.from('daily_records').select('*, activities(*)').eq('user_id',user.id).order('record_date');
+      if(error) throw error;
+      const rows=[['data','entrada_faculdade','saida_faculdade','resultado_minutos','cafe','almoco','jantar','academia','futebol','parque','atividade','tipo','inicio_atividade','fim_atividade','minutos_contabilizados']];
+      (data||[]).forEach(r=>{
+        const acts=r.activities||[];
+        if(!acts.length) rows.push([r.record_date,r.university_entry,r.university_exit,r.result_minutes,r.breakfast,r.lunch,r.dinner,r.gym,r.football,r.park,'','','','', '']);
+        acts.forEach(a=>rows.push([r.record_date,r.university_entry,r.university_exit,r.result_minutes,r.breakfast,r.lunch,r.dinner,r.gym,r.football,r.park,a.name,a.activity_type,a.start_time,a.end_time,a.counted_minutes]));
+      });
+      const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(';')).join('\n');
+      const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='horas-produtivas.csv'; a.click(); URL.revokeObjectURL(url);
+    }catch(e){showStatus(e.message||'Erro ao exportar.','error');}
+  }
+
+  function toggleOutside(){
+    const yes=document.querySelector('input[name="wentOutside"]:checked').value==='yes'; $('outsidePeriods').classList.toggle('hidden',!yes); $('addOutsideBtn').classList.toggle('hidden',!yes);
+    if(yes && !$('outsidePeriods').children.length) addOutside();
+  }
+
+  function setDefaultDates(){
+    const d=new Date(); const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0');
+    $('recordDate').value=`${y}-${m}-${day}`; $('periodStart').value=`${y}-${m}-01`; $('periodEnd').value=`${y}-${m}-${day}`;
+  }
+
+  async function enterApp(user){ $('authScreen').classList.add('hidden'); $('appScreen').classList.remove('hidden'); $('userEmail').textContent=user.email||''; setDefaultDates(); await loadHistory(); }
+
+  $('loginBtn').onclick=async()=>{try{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||!password)throw new Error('Preencha e-mail e senha.');const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)throw error;await enterApp(data.user);}catch(e){showAuthStatus(e.message,'error');}};
+  $('signupBtn').onclick=async()=>{try{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||!password)throw new Error('Preencha e-mail e senha.');if(password.length<6)throw new Error('Use uma senha com pelo menos 6 caracteres.');const {data,error}=await supabaseClient.auth.signUp({email,password});if(error)throw error;if(data.session) await enterApp(data.user); else showAuthStatus('Conta criada. Verifique o e-mail se a confirmação estiver habilitada no Supabase.','ok');}catch(e){showAuthStatus(e.message,'error');}};
+  $('logoutBtn').onclick=()=>supabaseClient.auth.signOut();
+  $('addOutsideBtn').onclick=()=>addOutside(); $('addEnglishBtn').onclick=()=>addEnglish(); $('addActivityBtn').onclick=()=>addActivity();
+  document.querySelectorAll('input[name="wentOutside"]').forEach(r=>r.onchange=toggleOutside);
+  $('calculateBtn').onclick=()=>{try{const f=collectForm();renderCalculation(calculateRecord(f));showStatus('Cálculo atualizado.','ok');}catch(e){showStatus(e.message,'error');}};
+  $('saveBtn').onclick=saveRecord; $('loadDayBtn').onclick=loadDay; $('analyzeBtn').onclick=analyzePeriod; $('exportCsvBtn').onclick=exportCsv;
+
+  supabaseClient.auth.onAuthStateChange(async(_event,session)=>{ if(session?.user){ await enterApp(session.user); } else { $('appScreen').classList.add('hidden'); $('authScreen').classList.remove('hidden'); } });
+  (async()=>{ const {data:{session}}=await supabaseClient.auth.getSession(); if(session?.user) await enterApp(session.user); })();
+</script>
+</body>
+</html>
