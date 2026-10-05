@@ -89,7 +89,7 @@
     <section>
       <h2 class="dashboard-title">Seu desempenho</h2>
       <div class="dashboard">
-        <div class="metric"><div class="metric-label">Horas Efetivas</div><div id="dashEffective" class="metric-value">0h 0min</div><div class="metric-sub">50% das horas produtivas</div></div>
+        <div class="metric"><div class="metric-label">Horas Efetivas</div><div id="dashEffective" class="metric-value">0h 0min</div><div class="metric-sub">50% da faculdade + atividades externas 100%</div></div>
         <div class="metric"><div class="metric-label">Horas Produtivas</div><div id="dashProductive" class="metric-value">0h 0min</div><div class="metric-sub">Tempo após os descontos</div></div>
         <div class="metric"><div class="metric-label">Horas Totais</div><div id="dashTotal" class="metric-value">0h 0min</div><div class="metric-sub">Antes dos descontos de pausas</div></div>
       </div>
@@ -213,8 +213,8 @@
   // NÃO coloque a service_role key neste arquivo.
   // Use apenas a Publishable/Anon key.
   // =============================================================
-  const SUPABASE_URL = 'https://fwfcfrgtqvzbprboxwgp.supabase.co' ;
-  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_Sk_O95m4puA9aar4lzzeyw_5gpVlLCA' ;
+  const SUPABASE_URL = 'COLE_AQUI_SUA_SUPABASE_URL';
+  const SUPABASE_PUBLISHABLE_KEY = 'COLE_AQUI_SUA_PUBLISHABLE_KEY';
 
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -347,7 +347,7 @@
     const timedMinutes=timed.reduce((s,a)=>s+a.counted_minutes,0);
     const totalMinutes=facultyMinutes+fixed+timed.reduce((s,a)=>s+a.duration_minutes,0);
     const productiveMinutes=universityProductive+fixed+timedMinutes;
-    const effectiveMinutes=Math.round(productiveMinutes*0.5);
+    const effectiveMinutes=Math.round(universityProductive*0.5)+fixed+timedMinutes;
     return { faculty, facultyMinutes, pauses, universityProductive, fixed, timed, timedMinutes, totalMinutes, productiveMinutes, effectiveMinutes };
   }
 
@@ -375,7 +375,8 @@
       football:form.football,
       park:form.park,
       total_minutes:calc.totalMinutes,
-      result_minutes:calc.productiveMinutes
+      result_minutes:calc.productiveMinutes,
+      effective_minutes:calc.effectiveMinutes
     };
   }
 
@@ -459,12 +460,12 @@
   async function refreshDashboard(start,end,title){
     try{
       const user=await getUser(); if(!user) return;
-      const {data,error}=await supabaseClient.from('daily_records').select('record_date,result_minutes,total_minutes').eq('user_id',user.id).gte('record_date',start).lte('record_date',end);
+      const {data,error}=await supabaseClient.from('daily_records').select('record_date,result_minutes,total_minutes,effective_minutes').eq('user_id',user.id).gte('record_date',start).lte('record_date',end);
       if(error) throw error;
       const records=data||[];
       const productive=records.reduce((s,r)=>s+(r.result_minutes||0),0);
       const total=records.reduce((s,r)=>s+(r.total_minutes ?? r.result_minutes ?? 0),0);
-      const effective=Math.round(productive*0.5);
+      const effective=records.reduce((s,r)=>s+(r.effective_minutes ?? Math.round((r.result_minutes||0)*0.5)),0);
       $('dashEffective').textContent=formatMinutes(effective);
       $('dashProductive').textContent=formatMinutes(productive);
       $('dashTotal').textContent=formatMinutes(total);
@@ -490,9 +491,9 @@
       const user=await getUser(); if(!user) return;
       const start=$('periodStart').value,end=$('periodEnd').value;
       if(!start||!end||start>end) throw new Error('Informe um intervalo de datas válido.');
-      const {data,error}=await supabaseClient.from('daily_records').select('record_date,result_minutes,total_minutes').eq('user_id',user.id).gte('record_date',start).lte('record_date',end).order('record_date');
+      const {data,error}=await supabaseClient.from('daily_records').select('record_date,result_minutes,total_minutes,effective_minutes').eq('user_id',user.id).gte('record_date',start).lte('record_date',end).order('record_date');
       if(error) throw error;
-      const records=data||[]; const productive=records.reduce((s,r)=>s+(r.result_minutes||0),0); const total=records.reduce((s,r)=>s+(r.total_minutes ?? r.result_minutes ?? 0),0); const effective=Math.round(productive*0.5); const days=records.length; const avg=days?productive/days:0;
+      const records=data||[]; const productive=records.reduce((s,r)=>s+(r.result_minutes||0),0); const total=records.reduce((s,r)=>s+(r.total_minutes ?? r.result_minutes ?? 0),0); const effective=records.reduce((s,r)=>s+(r.effective_minutes ?? Math.round((r.result_minutes||0)*0.5)),0); const days=records.length; const avg=days?productive/days:0;
       $('periodResult').innerHTML=`<strong>Efetivas:</strong> ${formatMinutes(effective)} · <strong>Produtivas:</strong> ${formatMinutes(productive)} · <strong>Totais:</strong> ${formatMinutes(total)} · ${days} dia(s) registrado(s). Média produtiva: <strong>${formatMinutes(Math.round(avg))}</strong>.`;
     }catch(e){showStatus(e.message||'Erro na análise.','error');}
   }
